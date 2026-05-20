@@ -1,0 +1,1127 @@
+#+STARTUP: content
+
+* The Python data model                                          :data_model:
+
+- The python data model as a framework of the language.
+  - Formalized interfaces of the building blocks of the language itself
+    e.g. sequences, functions, iterators, context managers etc
+  - Example: Giving an object __getitem__ and __len__ allows
+    iteration, slicing, sorting etc
+  - Allows others to use custom objects without learning custom methods
+  - By composable interfaces, objects gain functionality that
+    they do not need to inherit e.g. from object
+  - __str__ vs __repr__
+    - __repr__ should be unambiguous and if possible show how to
+      recreate the object
+    - __str__ should display a pretty printed version for end users
+    - when __str__ is missing, __repr__ is used instead
+  - We rarely need to interact with special methods directly, Python's
+    language constructs itself will use them
+
+* Sequences                                                       :sequences:
+
+** Two ways of classifying sequences
+
+*** Mutability
+
+**** Mutable Sequences
+- list, bytearray, array.array, collections.deque
+- registered as virtual subclasses of abc.MutableSequence with itself
+  is a subclass of abc.Sequence
+
+**** Immutable sequences
+- tuple, str, bytes
+- registered as virtual subclasses of abc.Sequence
+  
+*** Elements
+
+**** Container sequences
+- list, tuple, collections.deque
+- each element is a reference to an object
+  - each object has a header with metadata
+
+#+begin_src python :results output
+l = [[]] * 2
+l[0].append(1)
+print(l)
+#+end_src
+
+#+RESULTS:
+: [[1], [1]]
+    
+**** Flat Sequences
+- str, bytes, array.array
+- each element is the data representing a value within the sequences
+  own memory space
+  - because of this, an array of floats is much more compact than
+    a tuple of floats
+
+** tuples
+- A good use of tuples is representing record whose fields can be
+  accessed by unpacking (not having to use indices)
+
+** Unpacking
+- with unpacking, we can avoid variable assignment from sequences
+  using indices
+- unpacking supports iterators
+
+** Sequence Pattern matching                               :pattern_matching:
+- A sequence pattern matches the subject if:
+  - the subject is a sequence
+  - The subject and pattern have same number of items
+  - each corresponding item matches
+- An optional =if= guard can be used to check against conditionals
+- Does not support iterables that are not sequences (e.g. iterators)
+- Expressions that match constructor calls e.g. =str(name)= in the
+  context of pattern matching are executed at run time and pass if
+  the expression is of the expected type.
+- Pattern matching is an example of declarative programming where you
+  specify what to match rather than how to match it, leading to more
+  succint and less error prone code.
+** slicing
+- It is possible to assign iterables to a slice of a mutable sequence
+
+* Dictionaries and sets  
+
+- Merging dicts can be done using the =**= operator
+  e.g. ={'a': 0, **{'x': 1}, 'y': 2, **{'z': 3, 'x': 4}}=
+
+- Merging mappings can also be done using the | operator
+  e.g =d1 | d2= (new dict) or d1 |= d2 (in place)
+
+- When pattern matching dicts, partial matches succeed and extra keys
+  ignored. To collect extra keys, use =**foo= operator at the end
+  to collect extra keys
+  e.g. =case {'category': 'ice cream', **details}=
+- Main value for collections.abc is documenting standard interfaces
+  and =isinstance= checking
+- A hashable object implement __hash__ and __eq__
+  - the hash code doesn't change over it's lifetime
+  - objects that compare equal must have the same hash code
+  - the hashcode is only guaranteed to be constant within the same
+    python process
+- =.setdefault= on dicts prevents double lookup of missing keys (as
+  opposed to using =.get= with default value)
+- =__missing__= can handle missing keys. However, care must be taken
+  to consider behaviour of =__getitem__=, =get= and =__contains__=
+  - inheriting from =collections.UserDict= rather than =dict= is more
+    convenient
+- =collections.OrderedDict= can handle re-ordering operations more
+  effficiently than dict. useful e.g. for LRU cache
+- =collections.ChainMap= does not copy input mappings, only has
+  references. Updates via the chainmap only affect the first dict
+- =shelve.Shelf= provides persistent storage for mapping that pickles
+  items to the disk
+- Dictionary views (=dict_keys=, =dict_values=, =dict_items=) are
+  readonly projections of internal structures of the dict
+  - using set operators with views can help avoid inefficient loops or
+    if statements when inspecting dicts
+- literal set syntax like ={1, 2, 3}= is faster and more readable than
+  using a constructor like =set([1, 2, 3])=
+  - avoids symbol lookup by using specialized BUILD_SET bytecode and
+    skips list creation.
+- To save memory in python, avoid creating instance attributes outside
+  of =__init__=
+  - This is because instances of a class share a common hash table
+    under the hood. Adding a new instance cause a new hash table to be
+    created just for the =__dict__= of that instance.  This
+    optimization has been shown to save 10% to 20% memory.
+   
+
+* Unicode and bytes                  :NFC:NFD:NFKC:NFKD:unicode:bytes:locale:
+- The unicode standard separates the identity of characters from their
+  byte representations
+  - The identity - its code point - is a number from 0 to 1114111 shown
+    in the unicode standard in hex from U+0000 to U+10FFFF
+  - The actual byte representation depends on the encoding in use i.e.
+    the algorithm that converts the code point to its byte sequence and
+    vice versa
+    e.g. letter A is byte sequence \x41 in utf-8 and \x41\x00 in utf-16LE
+- when handling unicode encoding errors, if one cannot afford to loose
+  the data, use =xmlcharrefreplace= error handling option.
+- The way utf-8 was designed, it is almost impossible for an arbitrary
+  byte sequence to be accidentally decoded into it as garbage. If one
+  can successfully decode some bytes > 127 as utf-8, the byte sequence is likely
+  utf-8
+- Best practice for text I/O is the =unicode sandwich=
+  - bytes should be decoded to strings as early as possible on input
+  - str should be encoded to bytes as late as possible on output.
+  - most processing should work with str (unicode) objects
+- Explicitly pass the encoding argument when opening files rather than
+  depend on encoding defaults which are different across systems
+- For reliable comparisons of unicode, the text is normalized
+  - Form C (NFC) composes code points to the shortest equivalent string
+  - Form D (NFD) decomposes composed characters to base characters and
+    combining characters
+  - Keyboard drivers usually generate composed characters
+  - It is good to normalize strings with NFC before saving. W3C
+    recommends it
+  - Some single characters are normalized to another single character
+    with NFC
+  - Some unicode characters, named compatibility characters, are
+    introduced to support conversion to and from existing standards
+    even though there's already a canonical code point for them.
+    e.g. U+00B5 (MICRO SIGN) added to support latin1 conversion even
+    though it exists in the greek alphabet as U+03BC (GREEK SMALL
+    LETTER MU)
+  - In the NFKC and NFKD forms, compatibility characters are replaced
+    by one or more characters considered the preferred representation.
+    - NFKC and NFKD normalization cause data loss. Should be applied
+      only to special cases like searching and indexing and not storage
+- Case folding is converting all unicode characters to lowercase with
+  additional transformation. There are approx 300 code points where
+  =str.casefold= and =str.lower= return different results.
+  - Case folding is used for case insensitive unicode comparison. First
+    normalize the string with NFC then apply casefold for reliable
+    comparison
+- In some cases, you are interested only in removing diacritics and
+  not proper normalization. A technique for this:
+  - do NFD normalization
+  - filter out combining characters
+  - do NFC normalization
+- =str.maketrans= can be used to create custom translation maps
+  between characters, applied via =str.translate=
+- consider =pyuca= and =pyICU= for locale sensitive sorting
+  - They use collation tables to determine order of unicode points
+    - these table map characters to collation elements (weights) determining
+      sorting priority
+    - pyuca uses the default collation table and PyICU allow custom
+      local specific tables 
+- The unicode database provides several structured files that map
+  code points to character names and metadata about different characters
+  - These are used by various str methods like =isprintable=, =isnumeric=,
+    =casefold= and the functionality from the =unicodedata= module
+- Regular expressions work on both strings and bytes. However, words
+  and digits outside of the ascii range are not detected in bytes regex
+- =os= module functionality that accept file names accept both str and
+  bytes.
+  - when str is provided, these the =sys.getfilesystemencoding= codec
+    to decode and encode the name
+  - when bytes are provided, bytes are returned giving you the responsibility
+    to do the right thing
+- In absence of metadata, the =chardet= package help automatically
+  detect some encodings
+
+* Data Class builders
+- Data class builders do not use inheritance for their functionality.
+  - =collections.namedtuple= and =typing.NamedTuple= use metaprogramming
+    to create =tuple= subclasses
+  - the =@dataclass= decorator does not modify the class hierarchy,
+    but uses metaprogramming to inject attributes and methods
+- =collections.namedtuple= is an inhancement to tuples and can
+  be used anywhere tuples are used.
+  - provides conveniences such as field names, class name and a useful repr
+- =typing.NamedTuple= adds type annotation to named tuples, accessible
+  at the attribute =__annotations__=
+- a dataclass =field= attribute can allow advanced customization of
+  dataclass fields
+- a =__post_init__= can be used to add custom initialization of dataclasses
+- =typing.ClassVar= can be used to declare class attributes in dataclasses
+- =InitVar= can be used to declare init parameters only used for
+  initialization and are not instant variables. These are passed to
+  =__post_init__=
+- the =__match_args__= attribute of classes enables classes work
+  with positional argument pattern matching. It provides args names
+  by position.
+- Dataclasses as a code smell - when logic is missing, it may have
+  been misplaced
+
+* Object References, mutability and recycling
+- It may be more useful to say a variable is bound to an object, rather
+  than assigning an object to a variable in Python.
+- An objects identity doesn't change once created. It's identity is
+  returned by =id= function
+- In practice, we rarely use =id=, but use the =is= operator for
+  identity checking
+  - Most useful for comparing against singleton objects like =None= or
+    a custom sentinel
+  - =is= is faster than equality operator because it cannot be overloaded
+- Using =[:]= or object constructor creates shallow copies. Same as
+  using =copy.copy=
+- Using =copy.deepcopy= copies nested objects too.
+  - it remembers copied objects to handle cyclic references gracefully.
+- =__copy__= and =__deepcopy__= can be used to customize copy behaviour
+- Python uses call by sharing, i.e. each function parameter gets a
+  copy of each reference in the arguments. Parameters inside a
+  function are aliases to the actual arguments
+- To follow the principle of least astonishment, it may be useful to
+  only manipulate copies of mutable objects inside functions and classes
+- =del= deletes references and not objects.
+- Objects are garbage collected when there's no remaining references
+  to it (either deleted by =del= or last referencing variable was
+  rebound to another object)
+- Python uses reference counting for garbage collection. Each objects
+  keeps count of references to it. When the count get's to zero,
+  Python calls =__del__= if defined before freeing the allocated memory.
+- Weak references to an object do not increase its reference count.
+  This is useful e.g. for caching, preventing a cache reference from
+  preventing garbage collection.
+- =interning= is an optimization technique used for strings and small
+  integers to avoid duplication of objects that appear frequently.
+  It's behaviour is an implementation detail though
+
+* Functions as first class objects     :functools:partials:functools:partial:
+- A higher order function is one that takes a function as an argument
+  or returns one as a result.
+- A function's =__doc__= attribute is used to generate help text of
+  an object
+- Best known higher order functions are map, filter, reduce and apply.
+  - In python, =apply(fn, args, kwargs)= was depracated in favour of
+    =fn(*args, **kwargs)=
+- Useful reducing builtins are =sum=, =all=, =any=
+- Best use of anonymous function in python are in the context of
+  higher order function arguments.
+  - In other cases, named functions provide better documentation
+- A class implementing =__call__= is an easy way of creating
+  function-like objects that persist state across calls e.g. decorators
+- Keyword only arguments to functions are named after argument prefixed
+  with =*=
+- position-only arguments are named before a =/= in the parameter list.
+- The =operator= module provides function equivalents of various
+  operators to avoid use of =lambda= trivial expressions instead
+- =operator.itemgetter= uses the =[]= operator, so it supports not only sequences
+  but mappings or any object that implements =__getitem__=
+- Other useful ones include =attrgetter= and =methodcaller=
+- =functools.partial= returns a callable that has the original callable
+  bound to pre-determined values. Useful for modifying a function that
+  takes a number of arguments to an API that provides less arguments.
+* Type Hints in Functions                                       :typing:mypy:
+- It is good practice to do =from typing import X= to reduce the
+  length of function signatures
+- According to PEP 483, a type is a set of values and a set of
+  functions one can apply to these values
+- More general types have narrower interfaces e.g. =object= <
+  =abc.Sequence= < =abc.MutableSequence=.
+  - However, =Any= is a magic type that sits at the top and bottom of
+    the type heirarchy. It is simultaneously the most general type and
+    the most specialized type.
+- Rules for =consistent-with=:
+  - Given T1 with a subtype T2, T2 is consistent-with T1 (Liskov
+    substitution)
+  - Every type is consistent-with =Any=, you can pass objects of every
+    type to an argument declared as =Any=
+  - Any is consistent with every type: you can pass an object of type
+    Any where an argument of another type is expected
+- Among classes, consistent-with is defined like subtype-of. A
+  subclass is consistent-with all its superclasses
+- There's no class heirarchy between =float=, =int= and =complex=,
+  they all subclass =object=.  However PEP484 declares that =int= is
+  consistent with =float= because it implements all operations
+  supported by =float= and additional ones. Likewise, both are
+  consistent-with =complex=
+- The | operator can be used in place of =Optional=. It also works
+  with =isinstance= e.g. =isinstance(x, str | int)=
+- =Union= is useful with types that are not consistent-with each other.
+  =Union[int, float]= is redudant because =int= is consistent-with =float=
+  so =float= can be used as the type declaration.
+- Classes generated by =typing.NamedTuple= are consistent with =tuple=
+  types encapsulating the same types.  The reverse is not true because
+  named tuples have extra methods
+- In line with Postel's law, it is better to use Abstract types in
+  parameters and concrete types in return values.
+  - =abc.MutableMapping= and =abc.Mapping= for parameters and =dict=
+    for return values
+  - =abc.Sequence= or =abc.Iterable= for parameters and =list= for
+    return values
+- Numerical tower ABCs defined by PEP 3141 is useful for runtime type
+  checking but not used for static type checking. For static type
+  checking, =int=, =float= and =complex= are treated as special cases.
+- =TypeAlias= is the preferred annotation to use for assignments that
+  create custom types.
+- =NoReturn= is a special type for functions that never return
+  e.g. =sys.exit=
+- It is common to use =Iterable= for parameters to functions so that
+  it is possible to provide input data as a generator and save on
+  memory. If use of =.len= is required, the =Sequence= is used instead.
+- When declaring a parameterized generic like =Sequence[T]=, =TypeVar=
+  is used to declare variable T. This was done to avoid having to make
+  deep changes to the interpreter to support the generic type notion.
+- We can add extra parameters to further restrict a type created by
+  =TypeVar=.  The restricted type has to be one of the specified types
+- We can specify type that bounds the type created with a
+  =TypeVar=. All types that are consistent-with the bound type will
+  match the created type.
+- Using =typing.Protocol=, we can make duck typing explicit for type
+  checkers. It gives us static duck typing.
+- when using =typing.Callable=, it is not possible to specify type
+  information for optional and keyword argument types. The convention
+  is to replace the parameter list with =...=
+- =Callable[[], int]= is a subtype of =Callable[[], float]=
+  - This is because =int= is a subtype of =float=. =int= supports all
+    operations on =float=
+- =Callable[[int], None]= is however a supertype of
+  =Callable[[float], None]=
+  - Even though =int= is a subtype of =float=, the reverse is true
+    for parameterized types.
+  - A callable that takes an =int= as a parameter can perform
+    operations that are not supported on =float=.
+  - A callable that takes a =float= as a parameter cannot perform
+    operations that are not supported on =int=.
+- For arbitrary positional or keyword arguments, the type declaration
+  on function parameters is the set of types allowed for each
+  argument.
+- Function objects can be inspected:
+  - Some attributes
+    - =__doc__= :: the docstring
+    - =__annotations__= :: type annotations
+    - =__code__= :: the code object
+    - =__dict__= :: stores arbitrary attributes attached to functions
+  - =dir= can list more attributes
+  - The =inspect= module can be used to get details about functions in
+    a more useful form
+    - =inspect.signature= can be used to interact with a function's
+      signature
+* Decorators and closures
+- A decorator is a callable
+  - It may replace the decorated function with a different one
+  - It is executed when a module is loaded
+- A free variable is one that is not bound to the local scope
+  - In closures, free variables exist when the closure is defined
+    and access is retained when the defining scope is no longer available.
+  - Python uses lexical scoping as opposed to dynamic scoping where
+    free variables exist in the scope where the function is executed.
+- =functool.wraps= copies relevant attributes like __name__ and __doc__
+  from the function being wrapped to the wrapper.
+- Where memory usage is a concern, =functool.lru_cache= can be used in
+  place of =functools.cache=
+- =@singledispatch= decorator wraps a plain function to create an
+  entry point for a generic function with multiple implementations
+  for different argument types.
+- use generic abstract classes like =numbers.Integral= or
+  =typing.Protocol=instead of concrete implementations like =int= to
+  support a wider variety of generic types
+- =singledispatch= for overloading a method in the same class is flawed
+  because too much responsibility is concentrated. Its best use is
+  supporting modular extension for yet unforseen cases.
+- Decorators are best implemented as classes with =__call__=
+* Design patterns with first-class functions
+- Strategy and Command design patterns can be simplified with first
+  class functions
+- Decorators offer a convenient way of registering strategy functions
+- =__call__= can be used to replace single method classes
+
+* A pythonic object
+
+- The python data model promotes the use of duck typing for making
+  user defined types behave like built in ones, without the need for
+  inheritance
+- =classmethod= is used most commonly for creating alternative
+  constructors
+- =staticmethod= is used for functions that happen to be sitting in a
+  class body
+- f-strings, builtin =format= and =str.format= delegate the
+  actual formatting to the =__format__(format_spec)= method
+  on the target object
+  - if object has no =__format__=, the method inherited from =object=
+    returns =str(my_object)=
+- =__hash__= and =__eq__= need to be implemented to make an object
+  hashable
+  - attributes can be made read-only using the =property= decorator
+    to prevent modification
+- Classes in applications can be made as simple as possible, however
+  for libraries, it's advisable to make them have pythonic behaviour
+  since it's hard to predict usage.
+- preceding an attribute with a double underscore triggers name
+  mangling as can be observed by inspecting the __dict__ attribute.
+  - This is not for providing security against modification, but just
+    to prevent accidental clobbering.
+  - Some prefer to use a single underscore instead just as a convention.
+- =__slots__= allow one to define attributes that will not be stored
+  in =__dict__= hence using less memory. Extra attributes will be
+  rejected.
+  - Subclasses may require an extra =__slot__= declaration to
+    limit the allowed attributes.
+  - =__weakref__= needs to be added to the =__slot__= declaration
+    if the objects need to be used as targets of weak references.
+- Because class attributes are public, it is common practice to create
+  subclasses just to modify class attributes.
+
+* Special methods for sequences
+- Implementing just =__getitem__= and =__len__= makes an object
+  behave as a sequence.
+- =seq[a:b:c]= create an object of =slice(a, b, c)= and hands it
+  to =__getitem__=
+- Use =reprlib.repr= to get a safe representation of large or
+  recursive structures
+- Because of its use in debugging, calling =repr= on an object should
+  never raise an exception. Do your best to produce serviceable output.
+- In the context of OOP, a protocol is an informal interface, defined
+  only in documentation and not in code.
+  - One can get away with only implementing part of a protocol if
+    that's all they need (unless using static duck typing)
+- =slice.indices= gracefully handles missing and out of range
+  values to produce a correct slice for the given length
+- =operator.index= calls =__index__= on number to identify types
+  that can be used as indices
+- Excessive use of =isinstance= is a sign of bad OO design
+- =__getattr__= is called as a fallback if an attribute is missing
+  via normal lookup.
+- Often =__getattr__= and =__setattr__= are implemented together to
+  avoid inconsistent behaviour
+- when using =functools.reduce=, it is good practice to use an
+  initializer incase the sequence is empty. It should be the identity
+  value of the operation, e.g. 0 for +, |, ^ and 1 for *, &
+- =zip= can be used to transpose a matrix represented as nesterd
+  iterables
+
+* Interfaces, protocols and ABCs
+- Protocols in general provide an informal interface: based on
+  convention and may not be fully implemented. In Python this are
+  known as dynamic interfaces supported by the interpretter itself
+  e.g. iterable objects
+- =typing.Protocol= defines a static interface
+- The philosophy of the Python data model is to cooperate with
+  essential dynamic protocols as much as possible.
+  - The intepreter will compensate for missing dunder methods
+- =collections.abc= makes the basic protocols explicit
+- Following established protocols improves re-usability in the Python
+  ecosystem.
+- Monkey patching can be used to dynamically make code outside your
+  control adapt to certain protocols, at the expense of tight coupling
+- Duck typing can enhance defensive programming by generating run time
+  exceptions early in execution e.g. calling =list= or =iter= on an
+  argument expected to be an iterable
+- Duck typing is more robust and expressive than static typing
+  - =typing.Any= is accepted by all types
+  - complex manipulation can be performed dynamically
+- Goose typing entails subclassing ABCs to confirm that they implement
+  a certain interface and using =isinstance= and =issubclass= checks
+  - Instance and subclass checking with ABCs is acceptable, however
+    with concrete classes, it limits polymorphism
+- A chain of if/elif/else checks with =isinstance= could point to a
+  code smell. Usually, these cases should be handled using
+  polymorphism and dynamic dispatch
+- ABCs in Python encapsulate generic abstractions and most programmers
+  would not need to define custom ones (unless developing frameworks
+  and libraries)
+- Concrete methods in ABCs are implemented in terms of the public
+  interface and have no knowledge of an instance's internals
+- An abstract method in an ABC can have a default implementation.  It
+  should be overidden, and the implementation can be accessed using
+  =super=
+- When =@abstractmethod= is applied in combination with other
+  descriptors, it should be the innermost decorator
+- A class can be registered as a virtual sublcass of an ABC if it
+  implements its interface. Python does no checking to validate this.
+  This allows instance and subclass checks to work with the ABC
+  - This is used to register builtins with =collections.abc= classes.
+- Some ABCs support structural typing using =__subclasshook__= to
+  inspect attributes. Instance and subclass checking will
+  automatically work
+- =@runtime_checkable= can allow dynamic checking of protocol support
+  with =isinstance= and =issubclass=
+  - However, this is limited by the fact that at runtime type
+    hints are ignored.
+- Single method protocols make static duck typing more flexible. More
+  complete protocols can be composed from simpler ones
+  - Each protocol subclass has to include =typing.Protocol= in its
+    direct base classes to signify a new protocol rather than a
+    protocol implementation
+- Naming conventions for protocols:
+  - Clear concepts e.g. Container, Iterator
+  - SupportsX for callable methods e.g. SupportsRead, SupportsInt
+  - HasX for attributes e.g. HasItems, HasFileNo
+- Number ABCs in the =numbers= module are useful for dynamic type
+  checking but not for static type checking
+  - Static type checking defines that for majority of cases =complex=,
+    =float= and =int= work.
+* Inheritance: For better or for worse
+- =super= takes in two arguments, a type parameter and an
+  object_or_type parameter.
+  - It returns a proxy that finds the method with a search path
+    starting from type and binds it to the object_or_type parameter.
+- The code of built-ins is written in C and often does not call
+  methods overriden by user-defined classes.
+  - The solution is to derive from alternatives given in the
+    =collections= module e.g. =UserDict=, =UserString=
+- When a method calls =super=, it is a cooperative method, since it
+  enables cooperative multiple inheritance.
+  - cooperative methods should have compatible signatures, since they
+    could be called in any order
+- interaction of =super= with the MRO is dynamic, so even a method
+  without a superclass can call =super= if it exists within a class
+  heirarchy at run time.
+- Mixins often appear first in the tuple of base classes in the class
+  declaration so that they can properly override functionality
+- Favour composition over inheritance.
+  - composition and delegation can replace mixins.
+- Inheritance of interface creates a subclass, implying an =is-a=
+  relationship. This is best done with only ABCs if possible.
+- Inheritance of implementation to avoid code duplication can be done
+  using mixins.
+  - However, this can be replaced with composition
+- A class intended to define an interface should be an explicit ABC or
+  typing.Protocol sublcass. An ABC should only subclass other ABCs
+- Mixins should never be instatiated, and concrete classes should not
+  inherit only from a mixins
+- Aggregate classes are constructed primarily by inheriting from a
+  mixture of ABCs or mixins and do not add their own behaviour or
+  structure. This can be useful for clients
+- Subclass only classes designed for subclassing as indicated by name
+  or docstring.
+  - The =@typing.final= decorator can be applied to classes or methods
+    not meant to be subclassed/overriden for use with typecheckers and
+    IDEs
+- Avoid subclassing concrete classes. All non-leaf classes should be
+  abstract.
+* More on Type Hints
+
+- The =typing.overload= decorator is useful where functions may accept
+  different combinations of inputs, especially where the output type
+  depends on the combination of the input types.
+- The expressiveness of annotations is very limited as compared to
+  that of Python e.g. the builtin =max= can be re-implemented in
+  Python with just a bit more lines of code as it's overloading type
+  declarations have.
+- =TypedDict= only exists for the benefit of type checkers and has no
+  runtime effect e.g. There's no guarantee =json.loads= will return a
+  dictionary matching a TypeDict specification.
+- =typing.cast= can be used to silence spurious type checker warnings
+  or give the type checker a little help in ambiguous cases.
+- At import time, python reads type hints in functions, classes and
+  modules and stores them in the =__annotations__= attribute.
+  - =inspect.get_annotations= or =typing.get_type_hints= can be used
+    to retrieve them
+- Some definitions:
+  - Generic Type :: a type declared using typevars e.g. =abc.Mapping[KT,
+    KV]=
+  - Formal Type parameter :: The type variable used e.g. KT and KV
+  - Parameterized Type :: Type declared with actual types
+    e.g. =abs.Mapping[str, float]=
+  - Actual type parameter :: The type given to parameterized types
+    e.g. =int=, =float=
+- A generic type L is invariant when there's not supertype, subtype
+  relationships between two parameterized types even then there's a
+  relationship between the type parameters e.g. =list[int]= and
+  =list[float]=
+  - e.g. mutable collections in python
+- A generic type L is covariant when L[B] is a subtype of L[A] and B
+  is a subtype of A
+  - e.g. immutable containers in Python
+- In contravariant, the superclass, subclass relationship of generic
+  types is the reverse of the relationship of the actual type
+  parameters.  e.g. write only structures and callables on paramter
+  types.
+- Rules of thumb:
+  - A formal parameter that defines a type for data that comes out of
+    an object can be covariant.
+  - A formal parameter that defines a type for data that goes into an
+    object can be contravariant
+  - A formal parameter that defines a type for data that both goes
+    into and comes out of an object must be invariant.
+  - To err on the safe side, make formal parameters invariant.
+
+* Operator overloading
+- Limitations of operator overloading in Python
+  - meaning of operators for builtin types cannot be changed
+  - new operators cannot be created, only existing ones overloaded
+  - A few operators cannot be overloaded: is, and, or, not
+- When overriding unary operators, create and return a new instance
+  - unary operators include:
+    - =-= implemented by =__neg__=
+    - =+= implemented by =__pos__=
+    - =~= implemented by =__invert__= (bitwise not)
+  - But when the operator is + and the receiver is immutable, =self=
+    can be returned
+- When overriding unary or infix operators, return new objects. Only
+  augmented assignment operators e.g. +=, *= may modify the first
+  operator (if mutable)
+- Dispatch steps for infix special methods:
+  - use the method in the left side operand if it exists and doesn't
+    return =NotImplemented=
+  - use the reverse method in the right side operand if it exists and
+    doesn't return =NotImplemented=
+  - raise a =TypeError= for unsupported operations
+- =NotImplemented= is a special singleton returned by an infix
+  operator special method. It is different from the
+  =NotImplementedError= raised by ABCs
+- When the operation is commutative, the forward method can delegate
+  to the reverse method e.g. =__add__= can delegate to =__radd__=
+- If an infix method raises an exception, the operator dispatch
+  mechanism is aborted. It can be better to catch the exception and
+  return =NotImplemented= so that the interpreter can try calling the
+  reverse operator method.
+- For rich comparison operators, e.g. ==, !=, >= etc the same
+  set of methods are used for forward and reverse operations, with
+  operands swapped e.g.
+  - =a.__eq__(b)= or =b.__eq__(a)=
+  - =a.__gt__(b)= or =b.__lt__(a)=
+- "In the face of ambiguity refuse the temptation to guess"
+  - When it is unclear when a comparison passes or fails, it is best
+    to do the least surprising thing, with may be to fail
+- In many cases we may not need to implement =__ne__= when we have
+  =__eq__= because the fallback behavior inherited from =object= is to
+  negate =__eq__=
+- If augmented assignment operators are not implemented, the default
+  is to the simpler operators if they exist.
+  e.g. if =__iadd__= is not implemented, =__add__= will be used and the
+  left side variable rebound. a += b becomes a = a + b
+  - For immutable objects, in-special methods are unnecessary.
+- The += operator is more liberal than the + operator when it comes to
+  the types of its operands.
+  - For different types the result of + on different types is
+    ambiguous, while the result type for += is the left operand.
+- Operator overloading is one areas where =isinstance= tests are
+  common
+- The =functools.total_ordering= decorator can help with generating
+  rich comparison methods.
+
+* Iterators, Generators and Coroutines
+- Every standard collection in Python is iterable. An iterable is an
+  object that provides an iterator for use in for loops, unpacking etc
+- Whenever Python needs to iterate over an object, it calls the builtin
+  =iter= on it
+  - calls =__iter__= if implemented to obtain an iterator
+  - if =__getitem__= exists instead, it creates an iterator and
+    fetches items from index zero.
+  - Otherwise, it fails with a =TypeError=
+- Goose typing checks that an iterable implements an =__iter__=
+  method, and is less flexible than the duck typing approach
+  - The most flexible way to tell if an object is iterable is to call
+    =__iter__= on it
+- An iterable can be make from a callable by supplying it to =iter=
+  with a sentinel value.
+- Python's standard interface for an Iterator has two methods:
+  - =__next__= returns the next item in the series or raises
+    =StopIteration=
+  - =__iter__= returns self, allowing an iterator to be used where an
+    iterable is expected.
+- Best way to check for an iterator is using =isinstance(x, abc.Iterator)=
+  - it does structural typechecking with =__subclasshook__=
+- Iterators should support  multiple independed traversals. Each call to
+  =iter= should return a different iterator each with its own state.
+- The most compact implementation of an iterator is an =__iter__= that
+  is implemented as a generator (or returns a generator expression).
+- =itertools=, =functools= and some builtins provide generators that
+  can be combined in several ways for custom functionality.
+- =yield from= allows a generator to delegate to a sub generator.
+- Despite similar implementation, generators and coroutines are used
+  for different purposes:
+  - Generators produce data for iteration
+    - Calling =send= on a generator raises an error
+  - Coroutines consume data and produce data not meant for iteration.
+- The body of a coroutine could be an infinite loop. It is garbage collected
+  when no longer referenced, or can be closed explicitly.
+* with and else blocks
+- A context manager object is created from a class with =__enter__=
+  and =__exit__= methods
+  - =__enter__= may return self or any other object to be used in the with block
+  - =__exit__= is called when exiting the block
+    - if it returns a falsy value, any exception raised in the block
+      will be propagated
+- Parenthesis may be used in the with statement to manage multiple
+  context managers in the same block
+- The =@contextmanager= wrapping a generator can be used to create a
+  context manager.
+  - everything before the yield statement will be executed at the
+    beginning of the with block.
+  - the code after yield will run when exiting the block
+  - if an exception is passed to the =__exit__= method, it is thrown,
+    causing it be raised in the yield line
+  - A try .. except .. finally can be used handle exceptions and clean up
+  - if no exception is passed, =next= is called on the wrapped generator
+- generators decorated by =@contextmanager= can be used as decorators
+  themselves
+- The =else= block used with =for=, =while=, =try= can be mentally
+  substituted as 'then'
+  - It runs after a =for= loop if it ran to completion
+  - It runs after a =while= loop if exit condition became falsy (did
+    not break)
+  - It runs after a try block if no exception was raised.
+* Concurrency Models in Python
+- Starting a thread or process is not cheap, so instead of starting
+  one to perform a single computation then exit, often a pool of
+  workers are started to perform multiple computations to armotize the
+  cost
+- Execution units are objects that execute code independent of each
+  other each with its own state and call stack. In python they are,
+  threads, processes and coroutines.
+- Processes communicate via pipes, sockets or memory mapped files, all
+  of which only carry raw bytes
+- A thread as an execution unit within a process:
+  - A process usually has a main thread when it starts. A process can
+    create more threads using OS APIs. Threads operate within the same
+    memory space and enable pre-emptive multitasking under control of
+    the OS scheduler.
+- A coroutine is a function that can suspend itself and resume
+  later. In Python, there is classic coroutines built from generator
+  functions, and native coroutines built using =async def=
+- Coroutines usually run under a single thread under supervision of an
+  event loop.
+- coroutines support cooperative multitasking. Each has to cede
+  control via =yield= or =await= so that another may proceed.
+- Queues allow separate execution units to exchange data and control
+  messages.
+- A lock is an object that execution units can use to synchronize
+  their actions and avoid corrupting data
+- Access to object reference counts and other internal interpreter
+  state is controlled by the Global Intepreter Lock. Only one Python
+  thread can hold the GIL at a time, therefore serializing execution
+  regardless of CPU cores
+- The Python bytecode interpreter pauses the current thread every 5ms
+  by default releasing the GIL.
+  - The OS scheduler can then pick any other threads if available that
+    are waiting for the GIL to proceed.
+- A built in function or extension written in any other language
+  against the C/Python API releases the GIL while running time
+  consuming tasks.
+- Standard library functions that make syscalls release the GIL.
+- Extension that integrate at the Python/C API level can also launch
+  non-Python threads that are not affected by the GIL. They can read
+  and write memory underlying objects that support the buffer protocol
+- I/O functions release the GIL, so network programming is not
+  affected by the GIL
+- Contention of the GIL slows CPU intensive threads, making them
+  slower than single threaded implementations.
+- Best practice for coroutines with multithreading is to let one
+  thread handle the event loop and run all coroutines, while
+  additional threads perform specific tasks.
+- =time.sleep= blocks the calling thread but releases the GIL allowing
+  other threads to run.
+- The  =threading.Event= class is the simplest signalling mechanism
+  for coordinating threads
+- In multiprocessing, the =multiprocessing.Event= object crosses the
+  process boundary. It is implemented with a low-level OS semaphore in
+  C.
+- In multithreading and multiprocessing, the OS scheduler allocates
+  CPU time for preemptive multitasking.
+- In coroutines, an application level event loop manages the queue of
+  executing coroutines with cooperative multitasking.
+- Three methods of running a coroutine:
+  - =asyncio.run(coro())= called from a regular function to drive a
+    coroutine object
+  - =asyncio.create_task(coro())= called from a coroutine to schedule
+    another coroutine that will eventually run
+  - =await coro()= called from a coroutine to cede control to another
+    coroutine, until it returns
+- =time.sleep= in a coroutine will block the entire thread and nothing
+  will run. Use =asyncio.sleep= to pause the current coroutine and
+  allow other coroutines to run
+- It is easier to handle interruptions with coroutines than with
+  threads.
+  - Because of cooperative multitasking with =await=, one can catch
+    the =CanceledError= when a coroutine is cancelled and clean up
+- A common pattern in concurrent programs is having workers loop
+  indefinately while processing tasks from a queue.
+  - A sentinel value i.e. a poison pill is used to terminate the
+    workers.
+* Concurrent Executors
+- =ThreadPoolExecutor= and =ProcessPoolExecutor= are context
+  managers. =__exit__= will call =executor.shutdown(wait=True)= which
+  blocks until all threads are done
+- =executor.map= returns a generator that can be iterated to retrieve
+  results of each call (or reraise any exception)
+  - This will be in the order of mapping the calls
+- =concurrent.future.Future= and =asyncio.Future= represent deferred
+  computation that may or may not have completed (Similar to Promise)
+  in JavaScript
+  - Futures should only be created by the concurrency framework, which
+    manages its state. Application code should not do this.
+- Futures have a non-blocking =done= method that signals that the computation is done
+- They have a =add_done_callback= method to provide a callback to be
+  called once done. It is called in the same thread/process that
+  executed the future
+- They have a =result= method that returns the result of the
+  computation or reraises any exceptions encountered.
+  - In =concurrent.futures.Future=, result will block if future is not yet completed
+  - In =asyncio.Future=, the result method is awaited for the result
+- Futures are returned by
+  =executor.submit=. =concurrent.futures.as_completed= takes an
+  iterable of futures and return an iterator that yield as the futures
+  are done. This is different from =executor.map= which returns a
+  generator that yields in mapping order.
+  - The iterator from =executor.map= may block until the next future
+    in the map iterator completes.
+
+* Asynchronous Programming
+
+- =asyncio.as_completed= is generator that yields coroutines that
+  return results on the coroutines passed to it in the order they are
+  completed.
+- =asyncio.run= starts the event loop and returns only when the event loop exits
+- =asyncio.get_running_loop= returns a loop that is already running or
+  raises an error if there's none
+- =asycio.create_task= will schedule a coroutine for concurrent execution.
+  - it returns an =asyncio.Task=, that the client code doesn't need to await on
+- Low level awaitables
+  - An object with an =__await__= method that returns an iterator
+  - Objects written against the Python/C api with a =tp_as_async.am_await= function
+- =await.gather= accepts one or more awaitable arguments and returns a list
+  of their results after they all complete
+- asyncio does not provide an asynchronous filesystem API at this point
+- =await= borrows it's implementation from =yield from=
+- =async with= works with asynchronous context managers which
+  implement =__aenter__= and =__aexit__= as coroutines
+- =asyncio.to_thread= delegates work to a thread pool provided by asyncio
+- =asyncio.Semaphore= has an internal counter that decrements whenever
+  it's =acquire= method is awaited, and increments whenever its
+  =release= method is called
+  - =acquire= blocks whenever the counter is zero and suspends to coroutine.
+  - It is safer to use =asyncio.Semaphore= as a context manager
+- An alternative to =asyncio.to_thread= is =loop.run_in_executor=
+  (e.g. for older Python versions)
+  - The first argument is an optional Executor to use, which could be
+    a process pool executor if required
+  - asyncio itself uses =run_in_executor= under the hood e.g. for
+    socket functionality
+  - Note that =loop.run_in_executor= is uncancellable and can prevent
+    =asyncio.run= from shutting down
+- =async for= works with asynchronous iterables implementing
+  =__aiter__=
+  - =__aiter__= should be a regular function that returns an
+    asynchronous iterator
+- The =@asynccontextmanager= can be used to implement an async context manager
+  - It wraps and async function that yields
+- An asynchronous generator expression can be created using the =async for=
+  consuming an iterable
+- an alternative to =async.gather= is using an asynchronous
+  comprehension where each iterable is awaited.
+  - =async.gather= gives more control over error handling
+- Python's async/await language constructs are not tied to any
+  specific event loop and libraries.
+  - alternative frameworks like curio and trio utilize them
+
+* Dynamic Attributes and Properties
+- =__getattr__= is only called when there's no attribute by that name
+- Implementing =__dir__= supports the =dir()= builtin withch is used
+  for autocompletion in IDEs and Repls
+- =keyword.iskeyword= identifies Python keywords
+- =__init__= in reality is merely an initializer rather than constructor.
+  The =self= object is already created by =__new__=
+- =__new__= is the method that creates the object passed to =__init__=
+- If =__new__= returns an instance of a different class, =__init__=
+  for that class won't be called on it
+- As a class method, the first argument to =__new__= is the class
+  itself, and the rest are the arguments to =__init__=
+- calling =object.__new__(Someclass)= via super from a classes' =__new__= and passing
+  the =__class__= attribute of the created object is =Someclass=
+- Updating a classes =__dict__= with a mapping is a quick ways to
+  create attributes for the class
+- Functionality in python allowing one to easily create an object with
+  attributes from arguments supplied to =__init__= include:
+  - =types.SimpleNamespace=
+  - =argparse.Namespace=
+  - =multiprocessing.managers.Namespace=
+- Inside properties, trying to access an attribute by the same name
+  using the dot notation results in a =RecursionError=. Accessing
+  =self.__dict__= directly bypasses Python's default algorithm and
+  avoids the error.
+- Handmade property caches run the risk or race conditions in a
+  multithreaded program.
+- =functools.cached_property= caches the result of a method in an
+  instance attribute by the same name, preventing recomputation.
+  - =functools.cached_property= only runs on lookups, and when an
+    attribute by the same name doesn't already exist. If it exists, it
+    will be returned. If it doesn't exist or is cleared, the cached
+    property method will run and set it.
+  - stacking =@property= on =@functools.cache= will create a cacheable
+    property that operates independently of the the classes' attributes
+- Custom property setters already exist in =__init__= allowing one
+  create custom validation of attributes
+- The =property= builtin is a class that accepts a getter, setter,
+  deleter and a docstring
+- When using the dot notation for attribute access, the search starts
+  =obj.__class__= to check if there's a matching property, before
+  checking the instance itself.
+- when accessing properties created by property factories, the getters
+  and setters determine their relevant attribute names by reading from
+  their closures
+  - Default lookup is overriden by set properties, allowing them to
+    manage their attributes
+- In a class definition =@some_property.deleter= is used to mark the
+  method used to delete the attribute managed by the property
+  - When not using properties, the lower level =__delattr__= can be
+    used
+- Attributes that affect attribute handling
+  - =obj.__class__= (same as =type(obj)=)
+    - Python looks up special methods such as =__getattr__= only in
+      the object's class
+  - =__dict__=
+    - writeable attributes of an object or class
+  - =__slots__=
+    - A tuple of strings naming allowed attributes. If =__dict__= is
+      not in =__slots__= then instances will not have a =__dict__= of
+      their own, which helps save memory
+- Functions for attribute handling:
+  - =dir()=
+    - lists most attributes of an object. It is intended for interactive
+      use, not to be comprehensive. Output can be customized by =__dict__=
+      If called without arguments, lists name of current scope
+  - =getattr(obj, name[, default])=
+    - Get's attribute defined by =name= from =obj=
+  - =hasattr(obj, name)=
+    - Determines if named attribute exists. Uses =getattr= under the hood
+  - =setattr(obj, name, value)=
+    - Assigns an attribute to obj if it allows it.
+  - =vars(obj)=
+    - returns the value of =obj.__dict__=. If called without an argument,
+      returns the local scope
+- Special methods for attribute handling
+  - Trigged when using the dot notation, getattr, hasattr and setattr,
+    but not when directly accessing the instances =__dict__=. These
+    special methods are not shadowed by instance attributes of the
+    same name
+  - =__delattr__=
+    - called when using the del statement e.g  =del obj.attr=
+  - =__dir__=
+    - Provides a listing of attributes i.e. =dir(obj)= triggers =Class.__dir__(obj)=
+  - =__getattr__=
+    - called when attribute lookup fails
+  - =__getattribute__=
+    - Always called when there's an attribute lookup. Implementations
+      should usually call =super().__getattribute__= to prevent
+      infinite recursion
+ - =__setattr__=
+   - Always called when there's an attempt to set the named attribute.
+- In practice, =__getattribute__= and =__setattr__= are harder to use
+  correctly because they are always called. It is better to use
+  properties or descriptors for these cases.
+
+* Attribute Descriptors
+- A descriptor is a class that implements a dynamic protocol
+  consisting of the =__get__=, =__set__= and =__delete__= methods.
+  - the =property= class implements the full descriptor protocol
+  - partial implementations are also okay, most only implement
+    =__set__= and =__get__=
+  - It is a protocol-based feature, no subclassing required
+- Descriptors set the attribute in =__dict__= directly. Calling
+  =setattr= would result in infinite recursion
+- =__get__= receives three arguments:
+  - self :: an instance of the descriptor
+  - instance :: in instance of the class who's attributes are being managed
+  - owner :: the class who's instance is being managed
+- When retrieved via the class rather than instance, the =__get__=
+  method receives =None= for the managed instance's value. By
+  convention, the descriptor instance (self) is returned to enable
+  introspection
+- A descriptor instance is created once for each class it is defined
+  on, even if the class has many multiple instances.
+  - any values stored in the descriptor instance will be available to
+    all instances of the class
+- the =__set_name__= attribute is used to automatically assign a
+  =__dict__= storage name for the descriptor matching its defined attribute name,
+  minimizing repetition.
+  - When =__set_name__= is defined, =__get__= is not necessary. The
+    name will automatically be used to retrieve it's value from the
+    managed instance's =__dict__=
+- If a descriptor defines a =__set__=, then it becomes an overriding descriptor.
+  - Managed instances setting a similarly named attribute will have access overriden by the descriptor
+  - the =property= class is a example of an overriding descriptor
+  - If no =__get__= is defined, accessing the attribute in the managed
+    instance will either return an attribute by that name in it's
+    =__dict__= if it exists, or returns the descriptor instance itself
+    if it doesn't exist
+- A descriptor without a =__set__= is a non-overriding descriptor.
+  - setting an managed instance's attribute of the same name shadows
+    the descriptor.
+- Reading of a class attribute can be controlled by the descriptor
+  through its =__get__= method. However setting it cannot be managed
+  by =__set__=, the descriptor is replaced.
+  - To manage setting of attributes, we have to attach descriptors
+    to the class of the class, i.e. it's user defined metaclass
+    - The default metaclass is =type= which cannot be customized
+- User defined function have a =__get__= attribute, so then they
+  are attached to classes, they become descriptors.
+  - When a method is accessed through its class, it return an instance
+    of itself as is convention for descriptors
+  - When a method is accessed from a managed instance, it returns a
+    bound method, i.e.  callable that wraps the function and binds the
+    instance as its first argument.
+    - =__call__= on the returned callable executes the function with
+      the instance as its first argument.
+- Usage tips:
+  - use =property= to keep it simple as it implements the required protocol
+    - The default =__get__= raises =AttributeError= to create read only properties
+  - Read only descriptors require a =__set__=
+  - Validation descriptors need to define a =__set__=
+  - Caching can be done effectively with only =__get__=. The first
+    time, computation is performed then the instances =__dict__= is
+    assigned an attribute of the same name. Subsequent access will
+    retrieved the computed value directly
+    - =functools.cached_property= works in a similar way
+  - Nonespecial methods can be shadowed by instance attributes since
+    they are non-overidding descriptors.
+    - special (magic) methods cannot be overriden because the
+      intepreter looks for them in the class itself.
+- Deletion of managed attributes can be implemented via the
+  =__delete__= method
+- Every major feature of classes is implemented using descriptors:
+  - instance methods
+  - static methods
+  - class methods
+  - properties
+  - =__slots__=
+* Class Metaprogramming
+- Some special attributes foundin classes
+  - =__bases__= :: tuple of base classes of the file
+  - =__qualname__= :: dotted path from the global scope of the module to class definition
+  - =__subclasses__()= :: method that returns immediate subclasses of the class
+  - =mro()= :: returns superclasses in =__mro__=. Can be overriden to
+    customize the method resolution order
+- =type= when invoked with 3 arguments becomes a class factory. Its
+  arguments in order are:
+  - name :: identifier that appears after the =class= keyword
+  - bases :: a tuple of superclasses, or of a single =object=
+  - dict :: mapping of attribute names to values, which include
+    callable that become methods
+- optional keyword arguments may be passed to =type= which are
+  delegated to =__init_subclass__=
+- The =type= class is a metaclass, a class that builds other classes
+- =type= as a type hint indicates any class. It can be narrowed down
+  e.g. =type[tuple]= indicates a class that is a subclass of =tuple=
+- in Python 3.10 and above =inspect.get_annotations= can replace
+  =typing.get_type_hints= for retrieving annotations
+- =__init_subclass__= is called whenever the subclass of the class is defined (at import time)
+- =setattr= triggers =__setattr__=
+- =__slots__= cannot be set using =__init_subclass__= because it is
+  executed after class has been built.
+  - =__slots__= has not effect on a class after it has been built. It
+    only works when supplied to =type.__new__=
+- A class decorator returns a class to replace the decorated class
+  - It can be used instead of =__init_subclass__= to avoid interfering
+    with inheritance or metaclasses
+- At import time, the python intepreter:
+  - parses the source code and validates syntax
+  - compile the bytecode to be executed
+  - executes top-level code of the compiled module
+- Classes are built at import time, so this is when class metaprogramming occurs
+- =object= and =type= have a special relationship, =type= is a
+  subclass of =object= and =object= is an instance of =type=
+- Every class is an instance of =type=, but only metaclasses are
+  subclasses of =type=
+- A Metaclass =__new__= method is called with 4 arguments:
+  - the metaclass itself
+  - the name of the class being built
+  - bases of the class if any
+  - A class dict containing the classes' attributes (including class attributes and methods)
+- These can be modified before passing them up to =type.__new__= and modified further after that.
+- A superclasses' =__init_subclass__= will then be called for the
+  built class (if any), followed any class decorator
+- =__slots__= always needs to be added before calling =type.__new__=
+- Before calling a metaclasses =__new__= methods, Python will call
+  =__prepare__= to get a mapping to hold the namespace of the class,
+  which is then passed as the last argument to the =__new__= method
+- Defining =__repr__= on a metaclass allows customizing the =repr()=
+  of classes
+- When a class uses =__slots__=, it cannot have class attributes and
+  instance attributes of the same name
+  - Descriptors therefore have to use a differently named attribute as the storage name
+- Features designed to reduce the need for metaclasses:
+  - =__set_name__= to automatically set the name of a class descriptor
+  - class decorators to modify classes at build time
+  - =__init_subclass__= to customize class creation in subclasses
+- A class can only have one metaclass. This may be a problem when
+  using multiple inheritance.
+- It is best to treat metaprogramming with metaclasses as an
+  implementation details that is abstracted from end users (clients)
+- Some powerful features of Python that should probably only be used
+  in frameworks and libraries but not production code:
+  - ABCs, operator overloading, function decorators, descriptors,
+    class decorators, class builders.
+    - when a clear need arises, consider whether these could be
+      extracted into a library or framework
+- 4 main interception points in metaclasses:
+  - =__prepare__= :: returns the dict used for attributes
+  - =__new__= :: before class is created
+  - =__init__= :: after class is created
+  - =__call__= :: during instance creation
