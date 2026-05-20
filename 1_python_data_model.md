@@ -1,5 +1,4 @@
 ---
-
 ## The Python Data Model
 
 ### Formalized Interfaces for Language Building Blocks
