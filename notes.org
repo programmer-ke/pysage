@@ -208,7 +208,7 @@ print(l)
     to create =tuple= subclasses
   - the =@dataclass= decorator does not modify the class hierarchy,
     but uses metaprogramming to inject attributes and methods
-- =collections.namedtuple= is an inhancement to tuples and can
+- =collections.namedtuple= is an enhancement to tuples and can
   be used anywhere tuples are used.
   - provides conveniences such as field names, class name and a useful repr
 - =typing.NamedTuple= adds type annotation to named tuples, accessible
