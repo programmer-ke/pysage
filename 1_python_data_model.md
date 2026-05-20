@@ -1,7 +1,7 @@
----
 ## The Python Data Model
 
-### Formalized Interfaces for Language Building Blocks
+### Formalized Interface for Language Models
+
 ```python
 # Sequences
 class BookShelf:
