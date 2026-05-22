@@ -378,10 +378,10 @@ def apply(f: Callable[[float], str], value: float) -> str:
     return f(value)
 
 def int_handler(x: int) -> str:
-    return str(x)
+    return str(x << 1)
 
 def float_handler(x: float) -> str:
-    return str(x)
+    return str(x * 2)
 
 # apply(int_handler, 3.14)  ❌ int_handler can't handle float
 apply(float_handler, 3.14)  # ✅
