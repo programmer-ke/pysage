@@ -824,7 +824,7 @@ print(l)
 - They have a =result= method that returns the result of the
   computation or reraises any exceptions encountered.
   - In =concurrent.futures.Future=, result will block if future is not yet completed
-  - In =asyncio.Future=, the result method is awaited for the result
+  - In =asyncio.Future=, the future is awaited for the result
 - Futures are returned by
   =executor.submit=. =concurrent.futures.as_completed= takes an
   iterable of futures and return an iterator that yield as the futures
@@ -978,7 +978,7 @@ print(l)
   properties or descriptors for these cases.
 
 * Attribute Descriptors
-- A descriptor is a class that implements a dynamic protocol
+- A descriptor is a class that implements a descriptor protocol
   consisting of the =__get__=, =__set__= and =__delete__= methods.
   - the =property= class implements the full descriptor protocol
   - partial implementations are also okay, most only implement
